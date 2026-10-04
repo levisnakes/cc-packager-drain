@@ -30,6 +30,7 @@ local sources = {}
 local totalMoved = 0
 local lastMoved = 0
 local siloFull = false
+local lastError = nil
 
 local function matchesSource(name)
   if CONFIG.exclude[name] or name == silo then return false end
@@ -70,7 +71,11 @@ local function sweep()
   for i, src in ipairs(sources) do
     listTasks[i] = function()
       local ok, items = pcall(peripheral.call, src, "list")
-      if ok and items then listings[src] = items end
+      if ok and items then
+        listings[src] = items
+      else
+        lastError = src .. " list: " .. tostring(items)
+      end
     end
   end
   if #listTasks > 0 then parallel.waitForAll(table.unpack(listTasks)) end
@@ -84,7 +89,12 @@ local function sweep()
         local ok, n = pcall(peripheral.call, src, "pushItems", silo, slot)
         if ok and n then
           moved = moved + n
-          if n < item.count then full = true end
+          if n < item.count then
+            full = true
+            lastError = "silo took " .. n .. "/" .. item.count .. " " .. item.name
+          end
+        else
+          lastError = src .. " push: " .. tostring(n)
         end
       end
     end
@@ -115,6 +125,17 @@ local function draw()
   if siloFull then
     if term.isColour() then term.setTextColour(colours.red) end
     term.write("SILO FULL - items are waiting in chests")
+    term.setTextColour(colours.white)
+  end
+  -- Show the most recent problem so it's visible without a debugger.
+  for y = 10, 13 do
+    term.setCursorPos(1, y)
+    term.clearLine()
+  end
+  term.setCursorPos(1, 10)
+  if lastError then
+    if term.isColour() then term.setTextColour(colours.orange) end
+    print("Error: " .. lastError)
     term.setTextColour(colours.white)
   end
 end
