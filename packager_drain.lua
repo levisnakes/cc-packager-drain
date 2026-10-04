@@ -31,6 +31,7 @@ local totalMoved = 0
 local lastMoved = 0
 local siloFull = false
 local lastError = nil
+local otherNet = 0
 
 local function matchesSource(name)
   if CONFIG.exclude[name] or name == silo then return false end
@@ -42,6 +43,7 @@ local function matchesSource(name)
 end
 
 local function scan()
+  lastError = nil
   silo = CONFIG.silo
   if not silo then
     for _, name in ipairs(peripheral.getNames()) do
@@ -55,10 +57,28 @@ local function scan()
     silo = nil
   end
 
+  -- pushItems only works between inventories on the same cable network.
+  -- Find which wired modem on the computer reaches the silo, and only
+  -- drain chests on that network; anything else is reported, not drained.
+  local siloNet = nil
+  if silo then
+    for _, side in ipairs(rs.getSides()) do
+      if peripheral.hasType(side, "modem") and peripheral.call(side, "isPresentRemote", silo) then
+        siloNet = side
+        break
+      end
+    end
+  end
+
   sources = {}
+  otherNet = 0
   for _, name in ipairs(peripheral.getNames()) do
     if matchesSource(name) then
-      sources[#sources + 1] = name
+      if not siloNet or peripheral.call(siloNet, "isPresentRemote", name) then
+        sources[#sources + 1] = name
+      else
+        otherNet = otherNet + 1
+      end
     end
   end
 end
@@ -120,6 +140,13 @@ local function draw()
   term.setCursorPos(1, 6)
   term.clearLine()
   term.write("Last:    " .. lastMoved)
+  term.setCursorPos(1, 7)
+  term.clearLine()
+  if otherNet > 0 then
+    if term.isColour() then term.setTextColour(colours.red) end
+    term.write(otherNet .. " chest(s) on a different cable than the silo")
+    term.setTextColour(colours.white)
+  end
   term.setCursorPos(1, 8)
   term.clearLine()
   if siloFull then
