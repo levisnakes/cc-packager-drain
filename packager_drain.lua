@@ -1,16 +1,16 @@
 -- packager_drain.lua
 -- Empties every packager output chest on the wired network into a
--- Create item vault, as fast as CC allows (about one sweep every 1-2 ticks).
+-- Create Connected item silo, as fast as CC allows (about one sweep every 1-2 ticks).
 --
--- Setup: put a wired modem on every output chest and on the vault,
+-- Setup: put a wired modem on every output chest and on the silo,
 -- right-click each modem so it turns red (connected), and run networking
 -- cable from them to the computer. Save this file as "startup.lua" so it
 -- starts again whenever the chunk loads or the server restarts.
 
 local CONFIG = {
-  -- Peripheral name of the vault, e.g. "create:item_vault_0".
-  -- Leave nil to use the first item vault found on the network.
-  vault = nil,
+  -- Peripheral name of the silo, e.g. "create_connected:item_silo_0".
+  -- Leave nil to use the first item silo found on the network.
+  silo = nil,
 
   -- Any inventory whose peripheral name contains one of these
   -- is treated as a source and gets emptied.
@@ -25,14 +25,14 @@ local CONFIG = {
   idleDelay = 0.1,
 }
 
-local vault
+local silo
 local sources = {}
 local totalMoved = 0
 local lastMoved = 0
-local vaultFull = false
+local siloFull = false
 
 local function matchesSource(name)
-  if CONFIG.exclude[name] or name == vault then return false end
+  if CONFIG.exclude[name] or name == silo then return false end
   if not peripheral.hasType(name, "inventory") then return false end
   for _, pat in ipairs(CONFIG.sourcePatterns) do
     if string.find(name, pat, 1, true) then return true end
@@ -41,17 +41,17 @@ local function matchesSource(name)
 end
 
 local function scan()
-  vault = CONFIG.vault
-  if not vault then
+  silo = CONFIG.silo
+  if not silo then
     for _, name in ipairs(peripheral.getNames()) do
-      if string.find(name, "item_vault", 1, true) then
-        vault = name
+      if string.find(name, "item_silo", 1, true) then
+        silo = name
         break
       end
     end
   end
-  if not vault or not peripheral.isPresent(vault) then
-    vault = nil
+  if not silo or not peripheral.isPresent(silo) then
+    silo = nil
   end
 
   sources = {}
@@ -81,7 +81,7 @@ local function sweep()
   for src, items in pairs(listings) do
     for slot, item in pairs(items) do
       pushTasks[#pushTasks + 1] = function()
-        local ok, n = pcall(peripheral.call, src, "pushItems", vault, slot)
+        local ok, n = pcall(peripheral.call, src, "pushItems", silo, slot)
         if ok and n then
           moved = moved + n
           if n < item.count then full = true end
@@ -100,7 +100,7 @@ local function draw()
   term.write("Packager Drain")
   term.setCursorPos(1, 3)
   term.clearLine()
-  term.write("Vault:   " .. (vault or "NOT FOUND"))
+  term.write("Silo:    " .. (silo or "NOT FOUND"))
   term.setCursorPos(1, 4)
   term.clearLine()
   term.write("Sources: " .. #sources .. " chests")
@@ -112,20 +112,20 @@ local function draw()
   term.write("Last:    " .. lastMoved)
   term.setCursorPos(1, 8)
   term.clearLine()
-  if vaultFull then
+  if siloFull then
     if term.isColour() then term.setTextColour(colours.red) end
-    term.write("VAULT FULL - items are waiting in chests")
+    term.write("SILO FULL - items are waiting in chests")
     term.setTextColour(colours.white)
   end
 end
 
 local function drainLoop()
   while true do
-    if vault and #sources > 0 then
+    if silo and #sources > 0 then
       local moved, full = sweep()
       totalMoved = totalMoved + moved
       if moved > 0 then lastMoved = moved end
-      vaultFull = full
+      siloFull = full
       draw()
       if moved == 0 then sleep(CONFIG.idleDelay) end
     else
