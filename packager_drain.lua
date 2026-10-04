@@ -1,0 +1,153 @@
+-- packager_drain.lua
+-- Empties every packager output chest on the wired network into a
+-- Create item vault, as fast as CC allows (about one sweep every 1-2 ticks).
+--
+-- Setup: put a wired modem on every output chest and on the vault,
+-- right-click each modem so it turns red (connected), and run networking
+-- cable from them to the computer. Save this file as "startup.lua" so it
+-- starts again whenever the chunk loads or the server restarts.
+
+local CONFIG = {
+  -- Peripheral name of the vault, e.g. "create:item_vault_0".
+  -- Leave nil to use the first item vault found on the network.
+  vault = nil,
+
+  -- Any inventory whose peripheral name contains one of these
+  -- is treated as a source and gets emptied.
+  sourcePatterns = { "chest", "barrel" },
+
+  -- Peripheral names that must never be emptied, even if they match above.
+  exclude = {
+    -- ["minecraft:chest_12"] = true,
+  },
+
+  -- Seconds to wait after a sweep that moved nothing (0 = next tick).
+  idleDelay = 0.1,
+}
+
+local vault
+local sources = {}
+local totalMoved = 0
+local lastMoved = 0
+local vaultFull = false
+
+local function matchesSource(name)
+  if CONFIG.exclude[name] or name == vault then return false end
+  if not peripheral.hasType(name, "inventory") then return false end
+  for _, pat in ipairs(CONFIG.sourcePatterns) do
+    if string.find(name, pat, 1, true) then return true end
+  end
+  return false
+end
+
+local function scan()
+  vault = CONFIG.vault
+  if not vault then
+    for _, name in ipairs(peripheral.getNames()) do
+      if string.find(name, "item_vault", 1, true) then
+        vault = name
+        break
+      end
+    end
+  end
+  if not vault or not peripheral.isPresent(vault) then
+    vault = nil
+  end
+
+  sources = {}
+  for _, name in ipairs(peripheral.getNames()) do
+    if matchesSource(name) then
+      sources[#sources + 1] = name
+    end
+  end
+end
+
+-- One pass: list every source chest at once, then push every filled slot
+-- at once. Running the calls in parallel lets them all land in the same tick.
+local function sweep()
+  local listings = {}
+  local listTasks = {}
+  for i, src in ipairs(sources) do
+    listTasks[i] = function()
+      local ok, items = pcall(peripheral.call, src, "list")
+      if ok and items then listings[src] = items end
+    end
+  end
+  if #listTasks > 0 then parallel.waitForAll(table.unpack(listTasks)) end
+
+  local moved = 0
+  local full = false
+  local pushTasks = {}
+  for src, items in pairs(listings) do
+    for slot, item in pairs(items) do
+      pushTasks[#pushTasks + 1] = function()
+        local ok, n = pcall(peripheral.call, src, "pushItems", vault, slot)
+        if ok and n then
+          moved = moved + n
+          if n < item.count then full = true end
+        end
+      end
+    end
+  end
+  if #pushTasks > 0 then parallel.waitForAll(table.unpack(pushTasks)) end
+
+  return moved, full
+end
+
+local function draw()
+  term.setCursorPos(1, 1)
+  term.clearLine()
+  term.write("Packager Drain")
+  term.setCursorPos(1, 3)
+  term.clearLine()
+  term.write("Vault:   " .. (vault or "NOT FOUND"))
+  term.setCursorPos(1, 4)
+  term.clearLine()
+  term.write("Sources: " .. #sources .. " chests")
+  term.setCursorPos(1, 5)
+  term.clearLine()
+  term.write("Moved:   " .. totalMoved .. " items total")
+  term.setCursorPos(1, 6)
+  term.clearLine()
+  term.write("Last:    " .. lastMoved)
+  term.setCursorPos(1, 8)
+  term.clearLine()
+  if vaultFull then
+    if term.isColour() then term.setTextColour(colours.red) end
+    term.write("VAULT FULL - items are waiting in chests")
+    term.setTextColour(colours.white)
+  end
+end
+
+local function drainLoop()
+  while true do
+    if vault and #sources > 0 then
+      local moved, full = sweep()
+      totalMoved = totalMoved + moved
+      if moved > 0 then lastMoved = moved end
+      vaultFull = full
+      draw()
+      if moved == 0 then sleep(CONFIG.idleDelay) end
+    else
+      draw()
+      sleep(1)
+    end
+  end
+end
+
+-- Re-scan whenever a modem is connected or broken, so new packager
+-- chests are picked up without restarting the computer.
+local function watchLoop()
+  while true do
+    local ev = os.pullEvent()
+    if ev == "peripheral" or ev == "peripheral_detach" then
+      scan()
+      draw()
+    end
+  end
+end
+
+term.clear()
+scan()
+draw()
+parallel.waitForAny(drainLoop, watchLoop)
