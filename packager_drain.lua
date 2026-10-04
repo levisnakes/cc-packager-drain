@@ -63,7 +63,7 @@ local function scan()
   local siloNet = nil
   if silo then
     for _, side in ipairs(rs.getSides()) do
-      if peripheral.hasType(side, "modem") and peripheral.call(side, "isPresentRemote", silo) then
+      if peripheral.hasType(side, "peripheral_hub") and peripheral.call(side, "isPresentRemote", silo) then
         siloNet = side
         break
       end
