@@ -17,3 +17,14 @@ wget https://raw.githubusercontent.com/levisnakes/cc-packager-drain/main/package
 3. Reboot the computer.
 
 It empties every chest or barrel on that network. Put any chest you want to keep in the `exclude` list at the top of the file. If you have more than one silo, set `silo` to the one it should fill.
+
+## config.lua
+
+Anything in `/config.lua` on the computer overrides the settings at the top of the program, and survives reinstalls and updates. One file can be shared by every computer; each program ignores settings it doesn't use. Example:
+
+```lua
+DISCORD_WEBHOOK = "https://discord.com/api/webhooks/..."
+DISCORD_MENTION = "<@&ROLE_ID>"
+ALLOWED = { "YourName", "Friend" }
+INPUT_CHEST = "minecraft:chest_3"
+```
